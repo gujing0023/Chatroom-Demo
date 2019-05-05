@@ -22,7 +22,8 @@ main ()
   bzero (&srvaddr, sizeof (srvaddr));
   srvaddr.sin_family = AF_INET;
   srvaddr.sin_port = htons (3690);
-  srvaddr.sin_addr.s_addr = htonl (INADDR_ANY);
+  //srvaddr.sin_addr.s_addr = htonl (INADDR_ANY);
+  srvaddr.sin_addr.s_addr = inet_addr("104.238.136.201");
   bind (sockfd, (struct sockaddr *) &srvaddr, sizeof (struct sockaddr));
   listen (sockfd, 10);
 
