@@ -36,11 +36,11 @@ int main(int argc, char **argv)
 	maxfd = listenfd;		/* initialize */
 	maxi = -1;			/* index into client[] array */
 	for (i = 0; i < FD_SETSIZE; i++)
-		client[i] = -1;	/* -1 indicates available entry */
+		client[i] = -1;	        /* -1 indicates available entry */
 	FD_ZERO(&allset);
 	FD_SET(listenfd, &allset);
-    printf("listenfd is %d\n", listenfd);
-    printf("allset is %x\n", allset.fds_bits[0]);
+        printf("listenfd is %d\n", listenfd);
+        printf("allset is %x\n", allset.fds_bits[0]);
 
 	for ( ; ; ) {
 		rset = allset;	/* structure assignment */
