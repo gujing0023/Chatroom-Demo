@@ -1,76 +1,93 @@
-/*************************************************************************
-	> File Name: ser.c
-	> Author: battle
-	> Mail: batbattle@163.com 
-	> Created Time: 2018年06月02日 星期六 11时21分02秒
- ************************************************************************/
-#include<stdio.h>
-#include<stdlib.h>
-#include<string.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<unistd.h>
-#include<netinet/in.h>
-#include<arpa/inet.h>
-
-#define PORT 8888
-#define BACKLOG 10
-#define MAXDATASIZE  2048
-
-int main(int argc, char *argv[])
+#include <stdio.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <linux/in.h>
+#include <unistd.h>
+typedef struct
 {
-    int listenfd;
+	int sock;
+	struct sockaddr address;
+	int addr_len;
+} connection_t;
 
-    //创建一个socket描述符，此描述符仅是本主机上的一个普通文件描述符而已
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    printf("listenfd=%d\n", listenfd);
+void * process(void * ptr)
+{
+	char * buffer;
+	int len;
+	connection_t * conn;
+	long addr = 0;
 
-    //定义一个结构体变量servaddr，用来记录给定的IP和port信息，为bind函数做准备
-    struct sockaddr_in serveraddr;
-    bzero(&serveraddr, sizeof(serveraddr));
-
-    serveraddr.sin_family = AF_INET;
-    serveraddr.sin_port = htons(PORT); //把端口转化为网络字节序，即大端模式
-    serveraddr.sin_addr.s_addr = INADDR_ANY;
-
-    //把“本地含义的描述符”绑定到一个IP和Port上，此时这个socket才具备对外连接的能力
-    bind(listenfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr));
-
-    //创建一个监听队列，用来保存用户的请求连接信息（ip、port、protocol)
-    listen(listenfd, BACKLOG);
-
-    printf("======bind success,waiting for client's request======\n");
-    //让操作系统回填client的连接信息（ip、port、protocol）
-    struct sockaddr_in peeraddr;
-    socklen_t peer_len = sizeof(peeraddr);
-    int connfd;
-
-    while(1)
-    {
-        //accept函数从listen函数维护的监听队列里取一个客户连接请求处理
-        connfd = accept(listenfd, (struct sockaddr*)&peeraddr, &peer_len);
-        printf("\n=====================客户端链接成功=====================\n");
-        printf("IP = %s:PORT = %d\n", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
-
-        char buf[MAXDATASIZE];
-        while(1)
-        {
-            memset(buf, '\0', MAXDATASIZE/sizeof (char));
-            int recv_length = recv(connfd, buf, MAXDATASIZE/sizeof (char), 0);
-            if(recv_length == 0)
-            {
-                printf("client has closed!\n");
-                break;
-            }
-            printf("client say[%d]: ", recv_length);
-            fputs(buf, stdout);
-            memset(buf, '\0', MAXDATASIZE/sizeof (char));
-            printf("input: ");
-            fgets(buf, sizeof(buf), stdin);
-            send(connfd, buf, recv_length, 0);
-        }
-        close(connfd);
-        close(listenfd);
-        return 0;
+	if (!ptr) pthread_exit(0); 
+	conn = (connection_t *)ptr;
+	//Create loop so that one client can communicate continuosly
+	/* read length of message */
+	read(conn->sock, &len, sizeof(int));
+	printf("~~Message Length: %d~~", len - 1);
+	if (len > 0)
+	{
+		//get the information from client
+		addr = (long)((struct sockaddr_in *)&conn->address)->sin_addr.s_addr;
+		buffer = (char *)malloc((len+1)*sizeof(char));
+		buffer[len] = 0;
+		/* read message */
+		read(conn->sock, buffer, len);
+		send (conn->sock, "Hello, Client! \n", 17, 0);
+		/* print message content */
+		printf("The client<%d.%d.%d.%d>said:", 
+		(int)((addr      ) & 0xff),
+		(int)((addr >>  8) & 0xff),
+		(int)((addr >> 16) & 0xff),
+		(int)((addr >> 24) & 0xff));
+		printf("%s", buffer);
+		free(buffer);
 	}
+	/* close socket and clean up */
+	close(conn->sock);
+	free(conn);
+	pthread_exit(0);
+}
+
+int main(int argc, char ** argv)
+{
+	int sock = -1;
+	struct sockaddr_in address;
+	int port = 8888;
+	connection_t * connection;
+	pthread_t thread;
+
+	/* create socket */
+	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	/* bind socket to port */
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(port);
+	if (bind(sock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0)
+	{
+		fprintf(stderr, "error: cannot bind socket to port %d\n", port);
+		return -4;
+	}
+
+	/* listen on port */
+	listen(sock, 10);
+	printf("The server is ready and listening!\n");
+	while (1)
+	{
+		/* accept incoming connections */
+		connection = (connection_t *)malloc(sizeof(connection_t));
+		connection->sock = accept(sock, &connection->address, &connection->addr_len);
+		if (connection->sock <= 0)
+		{
+			free(connection);
+		}
+		else
+		{
+			/* start a new thread but do not wait for it */
+			pthread_create(&thread, 0, process, (void *)connection);
+			pthread_detach(thread);
+		}
+	}
+	
+	return 0;
 }
