@@ -65,12 +65,12 @@ int main ()
 	send[0] = '\0';
 
 	//TODO: 
-	//使用thread_create打开一个线程，这个线程负责当前client的聊天信息发送 
+	//使用pthread_create打开一个线程，这个线程负责当前client的聊天信息发送 
 	//thread_create(&thread, 0, Send, sockfd)
 		
 
 	//TODO:
-	// 使用thread_create打开一个线程，这个线程负责当前client接收聊天信息
+	// 使用pthread_create打开一个线程，这个线程负责当前client接收聊天信息
 	//thread_create(&thread, 0, Receive, sockfd)
 		
 	//关闭socked

@@ -99,7 +99,7 @@ void * process(void * ptr)
 
 			//TODO:
 			//创建一个线程用于处理该用户发送的信息
-			//thread_create(&thread, 0, Receive, clientNumber);
+			//pthread_create(&thread, 0, Receive, clientNumber);
 
 		}
 		clientNumber += 1;
