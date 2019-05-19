@@ -14,6 +14,7 @@ int ServerSock;
 //Every client's information
 typedef struct
 {
+	pthread_t threadNumber;
 	int sock;
 	char UserName[16]; 
 	struct sockaddr address;
@@ -39,20 +40,19 @@ int SendInfo(void* Info)
 
 //This function deals with single client, aim to receive message from this client
 //and then send them to another using SendIinfo
-void* Receive(void* clientnumber)
+void* Receive(void* clientStruct)
 {
-	int* Clientnumber = clientnumber;
+	connection_t* clientInfo = (connection_t *)clientStruct;
 	while(1)
 	{
 		//read the message from the client
 		char *Buffer;
 		int messageLen = 0;
-		read(conn[*Clientnumber].sock, &messageLen, sizeof(int));
-		printf("receive from %d\n", messageLen);
+		read(clientInfo->sock, &messageLen, sizeof(int));
 		if(messageLen > 0)
 		{
 			Buffer = (char *)malloc((messageLen+1)*sizeof(char));
-			read(conn[*Clientnumber].sock, Buffer, messageLen);   // the program stucks here and don't know why
+			read(clientInfo->sock, Buffer, messageLen);   // the program stucks here and don't know why
 						
 			if(Buffer[0] != ':') continue;
 			Buffer[messageLen] = '\0';
@@ -63,17 +63,17 @@ void* Receive(void* clientnumber)
 				char quit[] = " quit the chat room";
 				char quitMessage[20];		
 				quitMessage[0] = '\0';
-				strcat(conn[*Clientnumber].UserName, quit);	
+				strcat(clientInfo->UserName, quit);	
 				SendInfo(quitMessage);
-				conn[*Clientnumber].addr_len = -1;
-				pthread_exit(&threadClient[*Clientnumber]);
+				clientInfo->addr_len = -1;
+				pthread_exit(&clientInfo->threadNumber);
 			}
 			else{
 				//constitute the message
 				char begin[] = " says";
 				char messageDistribute[200];
 				messageDistribute[0] = '\0';
-				strcat(messageDistribute, conn[*Clientnumber].UserName);
+				strcat(messageDistribute, clientInfo->UserName);
 				strcat(messageDistribute, begin);
 				strcat(messageDistribute, Buffer);
 				SendInfo(messageDistribute);
@@ -131,8 +131,8 @@ void * process(void * ptr)
 			free(buffer);
 
 			//create a thread dealing the messages from a single client
-			int number = clientNumber;
-			pthread_create(&threadClient[clientNumber], 0, Receive, &number);
+			pthread_create(&threadClient[clientNumber], 0, Receive, &conn[clientNumber]);
+			conn[clientNumber].threadNumber = threadClient[clientNumber];
 		}
 		clientNumber += 1;
 		

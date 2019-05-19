@@ -22,7 +22,6 @@ void*  Send(void* Socked)
 		int messageSize = strlen(sender) + 1;
 		write(*SockedCopy, &messageSize, sizeof(int));
  		int i = write(*SockedCopy, sender, messageSize);      //both work when sending message
-		printf("write over! the write() returns %d\n", i);
 		//check whether this is a quit message
 		if(strcmp(sender, "q!") == 0)
 			exit(1);
