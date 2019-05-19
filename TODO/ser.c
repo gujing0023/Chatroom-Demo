@@ -6,10 +6,12 @@
 #include <linux/in.h>
 #include <unistd.h>
 #include <unistd.h>
+
 pthread_t thread;
+pthread_t threadClient[100];
 int ServerSock;
 
-//每个用户的信息，包括socked、昵称等
+//Every client's information
 typedef struct
 {
 	int sock;
@@ -17,90 +19,120 @@ typedef struct
 	struct sockaddr address;
 	int addr_len;
 } connection_t;
+static connection_t conn[100];
 
-
-//TODO:
-//该函数用于处理单个用户发送的信息，需设置循环以保证时刻处于工作状态
-//注意！ 需处理是否退出聊天室！
-//参数表示该用户的编号
-void Receive(int clientnumber)
-{
-
-	//TODO：
-	//SendInfo（"用户信息"）调用函数发送给所有用户
-}
-
-
-//TODO：
-//该函数负责将用户的信息(包括发送内容，是否进入，是否退出等)发送给每一个在聊天室中的用户
-//参数表示该用户的信息
-//返回值为1表示发送成功，否则失败
+//this function distributes the messsage/status of single client to the other
+//Info is the message needed to be distributed
 int SendInfo(void* Info)
 {
-
+	char *info = Info;
+	for(int i = 0; i < 100; ++i)
+		//send to the client that exists and doesn't quit room
+		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
+			if(send (conn[i].sock, info , strlen(info) + 1, 0) == -1)
+				printf("error occured, send to %s fail", conn[i].UserName);
+			printf("send %s to %s successfully!\n", info, conn[i].UserName);
+		}	
+	return 0;	
 }
 
-//TODO：
-//该函数判断是否有重复
-//返回值为1为有，否则为没有
-int Judge(void* USERNAME)
+
+//This function deals with single client, aim to receive message from this client
+//and then send them to another using SendIinfo
+void* Receive(void* clientnumber)
 {
-
+	int* Clientnumber = clientnumber;
+	while(1)
+	{
+		//read the message from the client
+		char *Buffer;
+		int messageLen = 0;
+		read(conn[*Clientnumber].sock, &messageLen, sizeof(int));
+		printf("receive from %d\n", messageLen);
+		if(messageLen > 0)
+		{
+			Buffer = (char *)malloc((messageLen+1)*sizeof(char));
+			read(conn[*Clientnumber].sock, Buffer, messageLen);   // the program stucks here and don't know why
+						
+			if(Buffer[0] != ':') continue;
+			Buffer[messageLen] = '\0';
+			//whether the client want to quit
+			if( Buffer[1] == 'q' && Buffer[2] == '!' )
+			{
+				//constitute quit message and delete this client
+				char quit[] = " quit the chat room";
+				char quitMessage[20];		
+				quitMessage[0] = '\0';
+				strcat(conn[*Clientnumber].UserName, quit);	
+				SendInfo(quitMessage);
+				conn[*Clientnumber].addr_len = -1;
+				pthread_exit(&threadClient[*Clientnumber]);
+			}
+			else{
+				//constitute the message
+				char begin[] = " says";
+				char messageDistribute[200];
+				messageDistribute[0] = '\0';
+				strcat(messageDistribute, conn[*Clientnumber].UserName);
+				strcat(messageDistribute, begin);
+				strcat(messageDistribute, Buffer);
+				SendInfo(messageDistribute);
+			}
+			free(Buffer);
+		}
+		else
+			continue;
+	}
 }
 
 
-//处理用户连接的线程函数
+
+//aim to accept whenever there is a client trying to connect
 void * process(void * ptr)
 {
-	printf("The thread number is: %ld\n", thread); 
+	pthread_t clientThread[100];
 	char * buffer;
 	int len;
-	int clientNumber = 0;       //the number of the client that is connecting now
-	connection_t  conn[10];     //this indicates that we only allow 10 clients to get into the chatroom
+	//the number of the client connecting now
+	int clientNumber = 0;      
 	long addr = 0;
 	while(1){
-		//等待用户连接
-		if(clientNumber < 10)
+		//waiting to be connected
+		if(clientNumber < 100)
 		{
 			conn[clientNumber].sock = accept(ServerSock, &conn[clientNumber].address, &conn[clientNumber].addr_len);
 		}
 		else
-			continue;
+			break;
 
 
-		/* 读取用户发来的信息长度 */
+		//the length of the message
 		read(conn[clientNumber].sock, &len, sizeof(int));
 		if (len > 0)
 		{
 
-			//读取用户的各种信息，包括地址、内容等
+			//multiple information of a client
 			addr = (long)((struct sockaddr_in *)&conn[clientNumber].address)->sin_addr.s_addr;
 			buffer = (char *)malloc((len+1)*sizeof(char));
 			buffer[len] = 0;
 			read(conn[clientNumber].sock, buffer, len);
 
 
-			//向用户发送连接成功的信息
+			//send success message to the client
 			send (conn[clientNumber].sock, "You have entered the chatroom, Start CHATTING Now!\n", 51, 0);
 			
 
-			//保存用户的昵称并提示聊天室信息
+			//save client's nick name
 			strcpy(conn[clientNumber].UserName, buffer);
 		
-			//TODO：
-			//需要有一个函数判断是否用户名与之前的重复
-			//返回值为1表明有，否则没有，有则直接拒绝登陆
-			//拒绝登陆表明删除信息并不创建进程
-			//Judge("UserName")
-
+			
 			printf("User <%s> has entered the Chatroom!\n", conn[clientNumber].UserName);
 			printf("There are %d people in Chatroom now!\n",clientNumber+1);
 			free(buffer);
 
-			//TODO:
-			//创建一个线程用于处理该用户发送的信息
-			//pthread_create(&thread, 0, Receive, clientNumber);
-
+			//create a thread dealing the messages from a single client
+			int number = clientNumber;
+			pthread_create(&threadClient[clientNumber], 0, Receive, &number);
 		}
 		clientNumber += 1;
 		
@@ -113,10 +145,10 @@ int main(int argc, char ** argv){
 	int port = 8888;
 	connection_t * connection;
 
-	/*创建服务端的socket*/
+	//create socked
 	ServerSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-	/*将socket与端口绑定*/
+	//bind the socked to a port
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(port);
@@ -127,22 +159,22 @@ int main(int argc, char ** argv){
 	}
 
 
-	/*listen，等待连接，第二个参数表示最大连接数*/
-	listen(ServerSock, 10);
-	printf("The server is ready and listening!\n");
-	printf("Create a new thread!\n");
+	//listen for connections
+	listen(ServerSock, 100);
+	printf("the server is ready and listening\n");
 
 
-	//创建一个线程用于处理用户登陆信息
+	//creating a thread dealing with connections
 	pthread_create(&thread, 0, process, (void *)connection);
 
 
-	//保证服务端线程持续运行
+	//keep this program working
 	for(int i = 0; i < 100; ++i)
-		sleep((int)100000);
+		sleep(10000);
 
 
-	//结束运行，聊天室永久关闭
+	//close socked and thread
 	pthread_detach(thread);
+	close(ServerSock);
 	return 0;
 }
