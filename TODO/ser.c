@@ -60,10 +60,12 @@ void* Receive(void* clientStruct)
 			if( Buffer[1] == 'q' && Buffer[2] == '!' )
 			{
 				//constitute quit message and delete this client
-				char quit[] = " quit the chat room";
-				char quitMessage[20];		
+				char quit[] = " quit the chat room\n";
+				char quitMessage[50];		
 				quitMessage[0] = '\0';
-				strcat(clientInfo->UserName, quit);	
+				strcat(quitMessage, clientInfo->UserName);
+				strcat(quitMessage, quit);	
+				//send the info to the others
 				SendInfo(quitMessage);
 				clientInfo->addr_len = -1;
 				pthread_exit(&clientInfo->threadNumber);
@@ -85,6 +87,19 @@ void* Receive(void* clientStruct)
 	}
 }
 
+//determine whether userName already exist
+//return 1 if existed, otherwise 0
+int usernameExisted(char userName[], int clientnumber)
+{
+	for(int i = 0; i < 100 && i != clientnumber; ++i)
+	{
+		if(conn[i].addr_len != 0 && conn[i].addr_len != -1)
+			if(strcmp(conn[i].UserName, userName) == 0)
+				return 1;
+
+	}	
+	return 0;
+}
 
 
 //aim to accept whenever there is a client trying to connect
@@ -116,23 +131,37 @@ void * process(void * ptr)
 			buffer = (char *)malloc((len+1)*sizeof(char));
 			buffer[len] = 0;
 			read(conn[clientNumber].sock, buffer, len);
-
-
-			//send success message to the client
-			send (conn[clientNumber].sock, "You have entered the chatroom, Start CHATTING Now!\n", 51, 0);
-			
-
 			//save client's nick name
 			strcpy(conn[clientNumber].UserName, buffer);
 		
-			
-			printf("User <%s> has entered the Chatroom!\n", conn[clientNumber].UserName);
-			printf("There are %d people in Chatroom now!\n",clientNumber+1);
+			//determine whether the UserName existed
+			if(usernameExisted(conn[clientNumber].UserName, clientNumber))
+			//reject connection
+			{
+				send(conn[clientNumber].sock,  "Reject", 6, 0);
+				--clientNumber;
+			}
+			else
+			{
+				//send success message to the client
+				send (conn[clientNumber].sock, "You have entered the chatroom, Start CHATTING Now!\n", 51, 0);
+				
+				char mesStart[50] = "User ";
+				char mesMiddle[30] = " has entered the Chatroom!\n";
+				strcat(mesStart, conn[clientNumber].UserName);
+				strcat(mesStart, mesMiddle);
+				
+				printf("%s", mesStart);
+				printf("There are %d people in Chatroom now!\n",clientNumber+1);
+				
+				//send enter message to all the clients
+				SendInfo(mesStart);
+				
+				//create a thread dealing the messages from a single client
+				pthread_create(&threadClient[clientNumber], 0, Receive, &conn[clientNumber]);
+				conn[clientNumber].threadNumber = threadClient[clientNumber];
+			}
 			free(buffer);
-
-			//create a thread dealing the messages from a single client
-			pthread_create(&threadClient[clientNumber], 0, Receive, &conn[clientNumber]);
-			conn[clientNumber].threadNumber = threadClient[clientNumber];
 		}
 		clientNumber += 1;
 		

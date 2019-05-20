@@ -18,12 +18,13 @@ void*  Send(void* Socked)
 	//save the socked into a int pointer
 	int *SockedCopy = Socked;
 	while(fgets(sender, sizeof(sender), stdin)){
+		printf("\r");
 		//whenever enter a string, send it
 		int messageSize = strlen(sender) + 1;
 		write(*SockedCopy, &messageSize, sizeof(int));
  		int i = write(*SockedCopy, sender, messageSize);      //both work when sending message
 		//check whether this is a quit message
-		if(strcmp(sender, "q!") == 0)
+		if(strcmp(sender, ":q!\n") == 0)
 			exit(1);
 		
 	}
@@ -56,7 +57,7 @@ int main ()
 	char send[80];
 
 	//input UserName
-	printf("Input Username:" );
+	Start: printf("Input Username:" );
 	fgets(send, sizeof(send), stdin);
 	send[strlen(send) - 1] = '\0';
  	int MessageSize = strlen(send);
@@ -76,19 +77,29 @@ int main ()
 	//send the user name to the server
 	write(sockfd, &MessageSize, sizeof(int));
  	write (sockfd, send, sizeof(send));
+	send[0] = '\0';
 
 	//get successfully connecting message
 	n = read (sockfd, rec, 1000);//n marks real length
  	rec[n] = '\0';	
-	fputs(rec, stdout);
-	
-	send[0] = '\0';
 
-	//open send thread 	
-	pthread_create(&threadSend, 0, Send, &sockfd);
+	//check whether been rejected
+	if(rec[0] == 'R')
+	{
+		rec[0] = '\0';
+		printf("Username existed, choose another one.\n");
+	 	goto Start; 
+	}
+	else
+	{	
+		fputs(rec, stdout);
 
-	//open receiving message thread
-	pthread_create(&threadReceive, 0, Receive, &sockfd);
+		//open send thread 	
+		pthread_create(&threadSend, 0, Send, &sockfd);
+
+		//open receiving message thread
+		pthread_create(&threadReceive, 0, Receive, &sockfd);
+	}
 
 	//close socked and close two threads
 	for(int i = 0; i < 100; ++i)
