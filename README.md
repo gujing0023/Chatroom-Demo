@@ -1,6 +1,6 @@
 # 基于Socket编程的多人聊天室 <C语言实现>
 
-###### Multi-clients chat room based on Scoket Programming <C implementation>
+### Multi-clients chat room based on Scoket Programming <C implementation>
 
 ## 功能
 
@@ -16,7 +16,7 @@
 
 > 图片展示及说明信息
 
-![demo-image](<https://raw.githubusercontent.com/gujing0023/Chatroom-Demo/master/demo/demo.png?token=AITVCCD236I2JPBVPXDKQH244P3BI>)
+![demo-image](https://github.com/gujing0023/Chatroom-Demo/blob/master/demo/demo.png)
 
 ## 食用方法
 
