@@ -7,9 +7,10 @@
 #include <unistd.h>
 #include <unistd.h>
 
-pthread_t thread;
-pthread_t threadClient[100];
-int ServerSock;
+static pthread_t thread;
+static pthread_t threadClient[100];
+static int ServerSock;
+static int clientNumber;
 
 //Every client's information
 typedef struct
@@ -32,7 +33,7 @@ int SendInfo(void* Info)
 		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
 			if(send (conn[i].sock, info , strlen(info) + 1, 0) == -1)
 				printf("error occured, send to %s fail", conn[i].UserName);
-			printf("send %s to %s successfully!\n", info, conn[i].UserName);
+			printf("---send <%s> to <%s> successfully!\n", info, conn[i].UserName);
 		}	
 	return 0;	
 }
@@ -62,9 +63,12 @@ void* Receive(void* clientStruct)
 				//constitute quit message and delete this client
 				char quit[] = " quit the chat room\n";
 				char quitMessage[50];		
+				char quitNumber[50];
 				quitMessage[0] = '\0';
+				sprintf(quitNumber, "There are %d people in the Chatroom now!!\n", --clientNumber);
 				strcat(quitMessage, clientInfo->UserName);
 				strcat(quitMessage, quit);	
+				strcat(quitMessage, quitNumber);
 				//send the info to the others
 				SendInfo(quitMessage);
 				clientInfo->addr_len = -1;
@@ -109,7 +113,7 @@ void * process(void * ptr)
 	char * buffer;
 	int len;
 	//the number of the client connecting now
-	int clientNumber = 0;      
+	clientNumber = 0;      
 	long addr = 0;
 	while(1){
 		//waiting to be connected
@@ -146,15 +150,15 @@ void * process(void * ptr)
 				//send success message to the client
 				send (conn[clientNumber].sock, "You have entered the chatroom, Start CHATTING Now!\n", 51, 0);
 				
+				//send inform message to all the users
 				char mesStart[50] = "User ";
 				char mesMiddle[30] = " has entered the Chatroom!\n";
+				char mesNumber[50];
+				sprintf(mesNumber, "There are %d people in the Chatroom now!!\n", clientNumber + 1);
 				strcat(mesStart, conn[clientNumber].UserName);
 				strcat(mesStart, mesMiddle);
-				
+				strcat(mesStart, mesNumber);
 				printf("%s", mesStart);
-				printf("There are %d people in Chatroom now!\n",clientNumber+1);
-				
-				//send enter message to all the clients
 				SendInfo(mesStart);
 				
 				//create a thread dealing the messages from a single client

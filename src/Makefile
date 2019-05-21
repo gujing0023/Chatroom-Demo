@@ -1,7 +1,8 @@
 all:
-	gcc -o tcp-client tcp-client.c
-	gcc -o tcp-server tcp-server.c
-	gcc -o udp-client udp-client.c
-	gcc -o udp-server udp-server.c
+	gcc -o cli1 cli.c -lpthread
+	gcc -o ser ser.c -lpthread
+copy:
+	cp cli1 ./cli2
+	cp cli1 ./cli3
 clean:
-	rm -f tcp-client tcp-server udp-client udp-server
+	rm -f cli1 cli2 cli3 ser

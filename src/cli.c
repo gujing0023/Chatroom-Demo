@@ -55,9 +55,19 @@ int main ()
 	struct sockaddr_in serv, cli;
 	char rec[1000];
 	char send[80];
+	char serAddress[80];
+	
+	//input server address
+	printf("Input server address(type <Enter> to use default): ");
+	fgets(serAddress, sizeof(serAddress), stdin);
+	if(serAddress[0] == '\n')
+	{
+		strcpy(serAddress, "127.0.0.1\n");
+	}
+	serAddress[strlen(serAddress) - 1] = '\0';
 
 	//input UserName
-	Start: printf("Input Username:" );
+	Start: printf("Input Username: " );
 	fgets(send, sizeof(send), stdin);
 	send[strlen(send) - 1] = '\0';
  	int MessageSize = strlen(send);
@@ -69,11 +79,15 @@ int main ()
  	bzero (&serv, sizeof (serv));
 	serv.sin_family = PF_INET;
 	serv.sin_port = htons (8888);
- 	serv.sin_addr.s_addr = inet_addr ("127.0.0.1" /*local machine*/);
+ 	serv.sin_addr.s_addr = inet_addr (serAddress /*server address*/);
 
 	//connect to the server
-	connect (sockfd, (struct sockaddr *) &serv, sizeof (struct sockaddr));
-	
+	if(connect (sockfd, (struct sockaddr *) &serv, sizeof (struct sockaddr)) == -1)
+	{
+		printf("connect failed\n");
+		exit(1);
+	}
+
 	//send the user name to the server
 	write(sockfd, &MessageSize, sizeof(int));
  	write (sockfd, send, sizeof(send));
