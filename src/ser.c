@@ -7,10 +7,14 @@
 #include <unistd.h>
 #include <unistd.h>
 
+#define BUFFER_SIZE 1024
+#define FILE_NAME_MAX_SIZE 512
+
 static pthread_t thread;
 static pthread_t threadClient[100];
 static int ServerSock;
 static int clientNumber;
+
 
 //Every client's information
 typedef struct
@@ -38,9 +42,46 @@ int SendInfo(void* Info)
 	return 0;	
 }
 
+//this function sends the file of single client to the others
+//File is the filename needed to be sent
+int SendFile(void* File)
+{
+	char *filename = File;
+	char *buffer;
+	FILE *fp;
+	for(int i = 0; i< 100; ++i)
+		//send to the client that exists and doesn't quit room
+		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
+			fp = fopen(filename, "r");
+			//open the file and read the data
+			if(NULL == fp)
+			{
+				printf("File:%s Not Founded\n", filename);
+			}
+			else
+			{
+				bzero(buffer, BUFFER_SIZE);
+				int length =0;
+				//read a piece of data each time and sent it to client,                                  //repeat untill the end of the file
+				while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
+				{
+					if(send(conn[i].sock, buffer, length, 0) < 0)
+					{
+						printf("Send file:%s Failed.\n", filename);
+						break;
+					}
+					bzero(buffer, BUFFER_SIZE);
+				}
+			printf("send %s to %s successfully!\n", filename, conn[i].UserName);
+		}
+		}
+	fclose(fp);
+	printf("File:%s Transter Successfully!\n", filename);
+	return 0;
+}
 
 //This function deals with single client, aim to receive message from this client
-//and then send them to another using SendIinfo
+//and then send them to another using SendInfo
 void* Receive(void* clientStruct)
 {
 	connection_t* clientInfo = (connection_t *)clientStruct;
@@ -73,6 +114,23 @@ void* Receive(void* clientStruct)
 				SendInfo(quitMessage);
 				clientInfo->addr_len = -1;
 				pthread_exit(&clientInfo->threadNumber);
+			}
+			else if ( Buffer[1] == 'f' && Buffer[2]  =='!')
+			{	
+				//send the file to the others
+                                char file[] = " send a file\n  ";
+				char fileMessage[50];
+				char Filename[FILE_NAME_MAX_SIZE];
+				fileMessage[0] = '\0';
+				strcat(fileMessage, clientInfo->UserName);
+				strcat(fileMessage, file);
+				SendInfo(fileMessage);
+				//read the file name  from buffer
+				//send the file to the others
+				for(int t = 3; t < messageLen+1; t++)
+					Filename[t-3] = Buffer[t];
+				printf("%s\n", Filename);
+				SendFile(Filename);
 			}
 			else{
 				//constitute the message
