@@ -27,8 +27,11 @@ typedef struct
 } connection_t;
 static connection_t conn[100];
 
+
+
 //this function distributes the messsage/status of single client to the other
 //Info is the message needed to be distributed
+
 int SendInfo(void* Info)
 {
 	char *info = Info;
@@ -42,48 +45,33 @@ int SendInfo(void* Info)
 	return 0;	
 }
 
+
+
 //this function sends the file of single client to the others
 //File is the filename needed to be sent
-int SendFile(void* File)
+int SendFile(char* Filename, void* clientStruct)
 {
-	char *filename = File;
-	char *buffer;
-	FILE *fp;
-	for(int i = 0; i< 100; ++i)
-		//send to the client that exists and doesn't quit room
-		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
-			fp = fopen(filename, "r");
-			//open the file and read the data
-			if(NULL == fp)
-			{
-				printf("File:%s Not Founded\n", filename);
-			}
-			else
-			{
-				bzero(buffer, BUFFER_SIZE);
-				int length =0;
-				//read a piece of data each time and sent it to client,                                  //repeat untill the end of the file
-				while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
-				{
-					if(send(conn[i].sock, buffer, length, 0) < 0)
-					{
-						printf("Send file:%s Failed.\n", filename);
-						break;
-					}
-					bzero(buffer, BUFFER_SIZE);
-				}
-			printf("send %s to %s successfully!\n", filename, conn[i].UserName);
-		}
-		}
-	fclose(fp);
-	printf("File:%s Transter Successfully!\n", filename);
+	char*filename = Filename;
+	int size;
+	int filesize;
+	char buffer[1024];
+	int len;
+	connection_t* clientInfo = (connection_t *)clientStruct;	
+	read(clientInfo->sock, &size, sizeof(int));
+        read(clientInfo->sock, &filesize, sizeof(int));
+	for(int i=0; i < filesize%1024+1; ++i)
+	{
+		read(clientInfo->sock, &len, sizeof(int));
+		read(clientInfo->sock, buffer, len);
+		SendInfo(buffer);
+	}	
 	return 0;
 }
-
 //This function deals with single client, aim to receive message from this client
 //and then send them to another using SendInfo
 void* Receive(void* clientStruct)
 {
+
 	connection_t* clientInfo = (connection_t *)clientStruct;
 	while(1)
 	{
@@ -118,19 +106,21 @@ void* Receive(void* clientStruct)
 			else if ( Buffer[1] == 'f' && Buffer[2]  =='!')
 			{	
 				//send the file to the others
-                                char file[] = " send a file\n  ";
+                                char file[] = " send you a file named as\n  ";
 				char fileMessage[50];
 				char Filename[FILE_NAME_MAX_SIZE];
 				fileMessage[0] = '\0';
 				strcat(fileMessage, clientInfo->UserName);
 				strcat(fileMessage, file);
-				SendInfo(fileMessage);
 				//read the file name  from buffer
 				//send the file to the others
 				for(int t = 3; t < messageLen+1; t++)
 					Filename[t-3] = Buffer[t];
+				Filename[messageLen-2]='\0';
+				strcat(fileMessage, Filename);
+				SendInfo(fileMessage);
 				printf("%s\n", Filename);
-				SendFile(Filename);
+				SendFile(Filename, clientInfo);
 			}
 			else{
 				//constitute the message

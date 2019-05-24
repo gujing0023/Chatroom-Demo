@@ -11,10 +11,45 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#define BUFFER_SIZE 1024
+#define FILE_NAME_MAX_SIZE 512
+
+
+void* Sendfile(char* Filename, void* Socked)
+{
+	int *SockedCopy = Socked; 
+	char *filename = Filename;
+	char buffer[1025];
+	FILE *fp;
+	fp = fopen(filename, "r");
+	if(NULL == fp)
+	{
+		printf("File:%s Not Founded\n", filename);
+	}
+	else
+	{
+		buffer[0]='\0';
+		int length =0;
+		while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
+		{
+			write(*SockedCopy, &length, sizeof(int));
+			if(write(*SockedCopy, buffer, length) < 0)
+			{
+				printf("Upload file:%s Failed.\n", filename);
+				break;
+			}
+			bzero(buffer, BUFFER_SIZE);
+		}
+	}
+	fclose(fp);
+	printf("File:%s Upload Successfully!\n", filename);
+	
+}
 //send the message to the server any time terminal get input
 void*  Send(void* Socked)
 {
 	char sender[80];
+	char Filename[FILE_NAME_MAX_SIZE];
 	//save the socked into a int pointer
 	int *SockedCopy = Socked;
 	while(fgets(sender, sizeof(sender), stdin)){
@@ -26,10 +61,20 @@ void*  Send(void* Socked)
 		//check whether this is a quit message
 		if(strcmp(sender, ":q!\n") == 0)
 			exit(1);
-		
+		else if(sender[1] == 'f' && sender[2] == '!')
+		{	
+			printf("please enter the file name again( including address):\n");
+			scanf("%s", Filename);
+			FILE *fp=fopen(Filename, "r");
+			fseek(fp, 0L, SEEK_END);
+			int Filesize=ftell(fp); 
+			int intSize = sizeof(int);
+			write(*SockedCopy, &intSize, sizeof(int));
+			write(*SockedCopy, &Filesize, sizeof(int));
+	                Sendfile( Filename, SockedCopy );
+			}			
 	}
 }
-
 
 //receive message from server
 void* Receive(void* Socked)
@@ -45,6 +90,11 @@ void* Receive(void* Socked)
 		fputs(Receiver, stdout);
 		Receiver[0] = '\0';
 	}
+}
+
+//receive file from server
+void* ReceiveFile(char* Filename, int Filesize)
+{
 }
 
 int main ()
