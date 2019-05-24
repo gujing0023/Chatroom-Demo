@@ -13,7 +13,9 @@
 
 #define BUFFER_SIZE 1024
 #define FILE_NAME_MAX_SIZE 512
-
+static char userName[50];
+static int senderMyself;
+static int fileReading = 0;
 
 void* Sendfile(char* Filename, void* Socked)
 {
@@ -45,6 +47,8 @@ void* Sendfile(char* Filename, void* Socked)
 	printf("File:%s Upload Successfully!\n", filename);
 	
 }
+
+void* ReceiveFile(char* dest, void* Socked);
 //send the message to the server any time terminal get input
 void*  Send(void* Socked)
 {
@@ -53,11 +57,21 @@ void*  Send(void* Socked)
 	//save the socked into a int pointer
 	int *SockedCopy = Socked;
 	while(fgets(sender, sizeof(sender), stdin)){
-		printf("\r");
-		//whenever enter a string, send it
+		//if this is the signal to save file, pass the destination to save
+		if(sender[1] == 'f' && sender[2] == 's')
+		{
+			fileReading = 1;
+			char destination[50];
+			for(int i = 4; i <  strlen(sender) - 1; ++i)
+				destination[i - 4] = sender[i];
+			destination[strlen(sender) - 5] = '\0';
+			ReceiveFile(destination, Socked);
+			continue;
+		}		
+		//else this is the message needed to be sent to the sever
 		int messageSize = strlen(sender) + 1;
 		write(*SockedCopy, &messageSize, sizeof(int));
- 		int i = write(*SockedCopy, sender, messageSize);      //both work when sending message
+ 		write(*SockedCopy, sender, messageSize);      
 		//check whether this is a quit message
 		if(strcmp(sender, ":q!\n") == 0)
 			exit(1);
@@ -72,8 +86,45 @@ void*  Send(void* Socked)
 			write(*SockedCopy, &intSize, sizeof(int));
 			write(*SockedCopy, &Filesize, sizeof(int));
 	                Sendfile( Filename, SockedCopy );
-			}			
+		}		
 	}
+}
+
+
+//receive file from server
+void* ReceiveFile(char* dest, void* Socked)
+{
+	int *SockedCopy = Socked;
+	char buffer[BUFFER_SIZE];
+	printf("the position you want to save file in is %s\n", dest);
+	FILE *fp = fopen(dest, "w");
+	if(NULL == fp)
+	{
+		printf("File:\t%s Can Not Open To Write\n", dest);
+		exit(1);
+	}
+	bzero(buffer, BUFFER_SIZE);
+
+	//read the size of the file
+	int filesize[1];
+	read(*SockedCopy, filesize, sizeof(int));
+	printf("the size of the file you are receiving %d\n", *filesize);
+	//start receiving the file
+	int length = 0;
+	int i = 0;
+	while((length = recv(*SockedCopy, buffer, BUFFER_SIZE, 0)) > 0 && i < *filesize/1024 + 1)
+	{
+		if(fwrite(buffer, sizeof(char), length, fp) < length)
+		{
+			printf("File:\t%s Write Failed\n", dest);
+			break;
+		}
+		printf("file receiving part %d\n successfully!", ++i);
+		bzero(buffer, BUFFER_SIZE);
+	}
+	printf("Receive File From Server Successful into %s!\n", dest);
+	fileReading = 0;
+	fclose(fp);
 }
 
 //receive message from server
@@ -83,20 +134,32 @@ void* Receive(void* Socked)
 	char Receiver[80];
 
 	while(1){
+		if(fileReading == 1)
+			continue;
 		//read message continuosly
 		int reveiverEnd = 0;
 		reveiverEnd  = read (*SockedCopy, Receiver, 1000);
 		Receiver[reveiverEnd] = '\0';	
+		if (Receiver[0] == '!' && Receiver[1] == '!')
+		{
+			fputs(Receiver, stdout);
+			//check whether the file sender is myself
+			char fileSender[50];
+			strncat(fileSender, Receiver, 2 + strlen(userName));
+			char userNow[50] = "!!";
+			strcat(userNow, userName);
+			//if the sender is not yourself, receive file
+			//otherwise, you don't have to receive this
+			if(strcmp(fileSender, userNow) != 0)
+				senderMyself = 0;
+     			else
+				senderMyself = 1;			
+		}
+			else
 		fputs(Receiver, stdout);
 		Receiver[0] = '\0';
 	}
 }
-
-//receive file from server
-void* ReceiveFile(char* Filename, int Filesize)
-{
-}
-
 int main ()
 {
 	int sockfd, n;
@@ -117,10 +180,11 @@ int main ()
 	serAddress[strlen(serAddress) - 1] = '\0';
 
 	//input UserName
+	userName[0] = '\0';
 	Start: printf("Input Username: " );
-	fgets(send, sizeof(send), stdin);
-	send[strlen(send) - 1] = '\0';
- 	int MessageSize = strlen(send);
+	fgets(userName, sizeof(userName), stdin);
+	userName[strlen(userName) - 1] = '\0';
+ 	int MessageSize = strlen(userName);
 
 	//create socked
  	sockfd = socket (PF_INET, SOCK_STREAM, 0);
@@ -140,8 +204,7 @@ int main ()
 
 	//send the user name to the server
 	write(sockfd, &MessageSize, sizeof(int));
- 	write (sockfd, send, sizeof(send));
-	send[0] = '\0';
+ 	write (sockfd, userName, sizeof(userName));
 
 	//get successfully connecting message
 	n = read (sockfd, rec, 1000);//n marks real length

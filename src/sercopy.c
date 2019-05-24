@@ -14,7 +14,7 @@ static pthread_t thread;
 static pthread_t threadClient[100];
 static int ServerSock;
 static int clientNumber;
-static int fileDistributing;
+
 
 //Every client's information
 typedef struct
@@ -40,8 +40,7 @@ int SendInfo(void* Info)
 		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
 			if(send (conn[i].sock, info , strlen(info) + 1, 0) == -1)
 				printf("error occured, send to %s fail", conn[i].UserName);
-			if(fileDistributing == 0)
-				printf("---send <%s> to <%s> successfully!\n", info, conn[i].UserName);
+			printf("---send <%s> to <%s> successfully!\n", info, conn[i].UserName);
 		}	
 	return 0;	
 }
@@ -57,25 +56,15 @@ int SendFile(char* Filename, void* clientStruct)
 	int filesize;
 	char buffer[1024];
 	int len;
-	fileDistributing = 1;
 	connection_t* clientInfo = (connection_t *)clientStruct;	
-
-	//get the size of the file
 	read(clientInfo->sock, &size, sizeof(int));
         read(clientInfo->sock, &filesize, sizeof(int));
-	printf("the file size: %d\n", filesize);
-	//send the file size to all the other clients
-	SendInfo(&filesize);
-
 	for(int i=0; i < filesize/1024+1; ++i)
 	{
 		read(clientInfo->sock, &len, sizeof(int));
 		read(clientInfo->sock, buffer, len);
 		SendInfo(buffer);
-		printf("send part %d successful!\n", i + 1);
-	}
-	printf("send all parts successful!\n");	
-	fileDistributing = 0;
+	}	
 	return 0;
 }
 //This function deals with single client, aim to receive message from this client
@@ -126,9 +115,9 @@ void* Receive(void* clientStruct)
 				strcat(fileMessage, file);
 				//read the file name  from buffer
 				//send the file to the others
-				for(int t = 3; t < messageLen-1; t++)
+				for(int t = 3; t < messageLen-2; t++)
 					Filename[t-3] = Buffer[t];
-				Filename[messageLen-4]='\0';
+				Filename[messageLen-5]='\0';
 				strcat(fileMessage, Filename);
 				strcat(sign, fileMessage);
 				SendInfo(sign);
