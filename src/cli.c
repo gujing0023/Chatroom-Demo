@@ -105,15 +105,22 @@ void* ReceiveFile(char* dest, void* Socked)
 	}
 	bzero(buffer, BUFFER_SIZE);
 
-	//read the size of the file
-	int filesize[1];
-	read(*SockedCopy, filesize, sizeof(int));
-	printf("the size of the file you are receiving %d\n", *filesize);
+	//read the size of the file, turn string into int
+	char filesize[20];
+	char filesizeStringSize[2];
+	int L1 = read(*SockedCopy, filesizeStringSize, 2);
+	int L2 = read(*SockedCopy, filesize, atoi(filesizeStringSize) + 1);
+
+	printf("L1:%d, L2:%d\n", L1, L2);
+	int filesizeInt = atoi(filesize);
+	printf("the size of the file you are receiving %d\n", filesizeInt);
+	
 	//start receiving the file
 	int length = 0;
 	int i = 0;
-	while((length = recv(*SockedCopy, buffer, BUFFER_SIZE, 0)) > 0 && i < *filesize/1024 + 1)
+	while((length = recv(*SockedCopy, buffer, BUFFER_SIZE, 0)) > 0 && i < filesizeInt/1024 + 1)
 	{
+		printf("partsize:%d\n", length);
 		if(fwrite(buffer, sizeof(char), length, fp) < length)
 		{
 			printf("File:\t%s Write Failed\n", dest);

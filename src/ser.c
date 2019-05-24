@@ -63,16 +63,25 @@ int SendFile(char* Filename, void* clientStruct)
 	//get the size of the file
 	read(clientInfo->sock, &size, sizeof(int));
         read(clientInfo->sock, &filesize, sizeof(int));
-	printf("the file size: %d\n", filesize);
+
 	//send the file size to all the other clients
-	SendInfo(&filesize);
+	//convert the int to string first
+	//then send both the string length and string to the clients
+	char filesizeString[20];
+	char filesizeStringsize[2];
+	sprintf(filesizeString, "%d", filesize);
+	sprintf(filesizeStringsize, "%ld", strlen(filesizeString));
+	SendInfo(filesizeStringsize);
+	SendInfo(filesizeString);
 
 	for(int i=0; i < filesize/1024+1; ++i)
 	{
 		read(clientInfo->sock, &len, sizeof(int));
 		read(clientInfo->sock, buffer, len);
+		printf("receive %d bytes\n", len);
 		SendInfo(buffer);
 		printf("send part %d successful!\n", i + 1);
+		bzero(buffer, BUFFER_SIZE);
 	}
 	printf("send all parts successful!\n");	
 	fileDistributing = 0;
