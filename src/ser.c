@@ -32,12 +32,12 @@ static connection_t conn[100];
 //this function distributes the messsage/status of single client to the other
 //Info is the message needed to be distributed
 
-int SendInfo(void* Info)
+int SendInfo(void* Info, int exception)
 {
 	char *info = Info;
 	for(int i = 0; i < 100; ++i)
 		//send to the client that exists and doesn't quit room
-		if(conn[i].addr_len != -1 && conn[i].addr_len != 0){
+		if(conn[i].addr_len != -1 && conn[i].addr_len != 0 && conn[i].sock != exception){
 			if(send (conn[i].sock, info , strlen(info) + 1, 0) == -1)
 				printf("error occured, send to %s fail", conn[i].UserName);
 			if(fileDistributing == 0)
@@ -50,19 +50,17 @@ int SendInfo(void* Info)
 
 //this function sends the file of single client to the others
 //File is the filename needed to be sent
-int SendFile(char* Filename, void* clientStruct)
+int SendFile(connection_t* clientStruct)
 {
-	char*filename = Filename;
 	int size;
 	int filesize;
 	char buffer[1024];
 	int len;
 	fileDistributing = 1;
-	connection_t* clientInfo = (connection_t *)clientStruct;	
 
 	//get the size of the file
-	read(clientInfo->sock, &size, sizeof(int));
-        read(clientInfo->sock, &filesize, sizeof(int));
+	read(clientStruct->sock, &size, sizeof(int));
+        read(clientStruct->sock, &filesize, sizeof(int));
 
 	//send the file size to all the other clients
 	//convert the int to string first
@@ -71,15 +69,15 @@ int SendFile(char* Filename, void* clientStruct)
 	char filesizeStringsize[2];
 	sprintf(filesizeString, "%d", filesize);
 	sprintf(filesizeStringsize, "%ld", strlen(filesizeString));
-	SendInfo(filesizeStringsize);
-	SendInfo(filesizeString);
+	SendInfo(filesizeStringsize, clientStruct->sock);
+	SendInfo(filesizeString, clientStruct->sock);
 
 	for(int i=0; i < filesize/1024+1; ++i)
 	{
-		read(clientInfo->sock, &len, sizeof(int));
-		read(clientInfo->sock, buffer, len);
-		printf("receive %d bytes\n", len);
-		SendInfo(buffer);
+		read(clientStruct->sock, &len, sizeof(int));
+		read(clientStruct->sock, buffer, len);
+		printf("receive %ld bytes\n", strlen(buffer));
+		SendInfo(buffer, clientStruct->sock);
 		printf("send part %d successful!\n", i + 1);
 		bzero(buffer, BUFFER_SIZE);
 	}
@@ -95,6 +93,7 @@ void* Receive(void* clientStruct)
 	connection_t* clientInfo = (connection_t *)clientStruct;
 	while(1)
 	{
+		if(fileDistributing) continue;
 		//read the message from the client
 		char *Buffer;
 		int messageLen = 0;
@@ -119,11 +118,11 @@ void* Receive(void* clientStruct)
 				strcat(quitMessage, quit);	
 				strcat(quitMessage, quitNumber);
 				//send the info to the others
-				SendInfo(quitMessage);
+				SendInfo(quitMessage, -1);
 				clientInfo->addr_len = -1;
 				pthread_exit(&clientInfo->threadNumber);
 			}
-			else if ( Buffer[1] == 'f' && Buffer[2]  =='!')
+			else if ( Buffer[1] == 'f' && Buffer[2]  =='w')
 			{	
 				//send the file to the others
 				char sign[] = "!!";
@@ -135,14 +134,13 @@ void* Receive(void* clientStruct)
 				strcat(fileMessage, file);
 				//read the file name  from buffer
 				//send the file to the others
-				for(int t = 3; t < messageLen-1; t++)
-					Filename[t-3] = Buffer[t];
-				Filename[messageLen-4]='\0';
+				for(int t = 4; t < messageLen-1; t++)
+					Filename[t-4] = Buffer[t];
+				Filename[messageLen-5]='\0';
 				strcat(fileMessage, Filename);
 				strcat(sign, fileMessage);
-				SendInfo(sign);
-				printf("%s\n", Filename);
-				SendFile(Filename, clientInfo);
+				SendInfo(sign, -1);
+				SendFile(clientInfo);
 			}
 			else{
 				//constitute the message
@@ -152,7 +150,7 @@ void* Receive(void* clientStruct)
 				strcat(messageDistribute, clientInfo->UserName);
 				strcat(messageDistribute, begin);
 				strcat(messageDistribute, Buffer);
-				SendInfo(messageDistribute);
+				SendInfo(messageDistribute, -1);
 			}
 			free(Buffer);
 		}
@@ -229,7 +227,7 @@ void * process(void * ptr)
 				strcat(mesStart, mesMiddle);
 				strcat(mesStart, mesNumber);
 				printf("%s", mesStart);
-				SendInfo(mesStart);
+				SendInfo(mesStart, -1);
 				
 				//create a thread dealing the messages from a single client
 				pthread_create(&threadClient[clientNumber], 0, Receive, &conn[clientNumber]);

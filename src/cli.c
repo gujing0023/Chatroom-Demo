@@ -26,7 +26,7 @@ void* Sendfile(char* Filename, void* Socked)
 	fp = fopen(filename, "r");
 	if(NULL == fp)
 	{
-		printf("File:%s Not Founded\n", filename);
+		printf("File:%s Not Found\n", filename);
 	}
 	else
 	{
@@ -48,15 +48,18 @@ void* Sendfile(char* Filename, void* Socked)
 	
 }
 
-void* ReceiveFile(char* dest, void* Socked);
+void ReceiveFile(char* dest, int Socket);
 //send the message to the server any time terminal get input
-void*  Send(void* Socked)
+void* Send(void* Socked)
 {
 	char sender[80];
 	char Filename[FILE_NAME_MAX_SIZE];
 	//save the socked into a int pointer
 	int *SockedCopy = Socked;
-	while(fgets(sender, sizeof(sender), stdin)){
+	while(1)
+	{
+		if(fileReading) continue;
+		fgets(sender, sizeof(sender), stdin);
 		//if this is the signal to save file, pass the destination to save
 		if(sender[1] == 'f' && sender[2] == 's')
 		{
@@ -65,7 +68,7 @@ void*  Send(void* Socked)
 			for(int i = 4; i <  strlen(sender) - 1; ++i)
 				destination[i - 4] = sender[i];
 			destination[strlen(sender) - 5] = '\0';
-			ReceiveFile(destination, Socked);
+			ReceiveFile(destination, *SockedCopy);
 			continue;
 		}		
 		//else this is the message needed to be sent to the sever
@@ -75,7 +78,7 @@ void*  Send(void* Socked)
 		//check whether this is a quit message
 		if(strcmp(sender, ":q!\n") == 0)
 			exit(1);
-		else if(sender[1] == 'f' && sender[2] == '!')
+		else if(sender[1] == 'f' && sender[2] == 'w')
 		{	
 			printf("please enter the file name again( including address):\n");
 			scanf("%s", Filename);
@@ -86,15 +89,15 @@ void*  Send(void* Socked)
 			write(*SockedCopy, &intSize, sizeof(int));
 			write(*SockedCopy, &Filesize, sizeof(int));
 	                Sendfile( Filename, SockedCopy );
+			fileReading = 0;
 		}		
 	}
 }
 
 
 //receive file from server
-void* ReceiveFile(char* dest, void* Socked)
+void ReceiveFile(char* dest, int Socket)
 {
-	int *SockedCopy = Socked;
 	char buffer[BUFFER_SIZE];
 	printf("the position you want to save file in is %s\n", dest);
 	FILE *fp = fopen(dest, "w");
@@ -108,25 +111,23 @@ void* ReceiveFile(char* dest, void* Socked)
 	//read the size of the file, turn string into int
 	char filesize[20];
 	char filesizeStringSize[2];
-	int L1 = read(*SockedCopy, filesizeStringSize, 2);
-	int L2 = read(*SockedCopy, filesize, atoi(filesizeStringSize) + 1);
+	int L1 = read(Socket, filesizeStringSize, 2);
+	int L2 = read(Socket, filesize, atoi(filesizeStringSize) + 1);
 
-	printf("L1:%d, L2:%d\n", L1, L2);
 	int filesizeInt = atoi(filesize);
-	printf("the size of the file you are receiving %d\n", filesizeInt);
-	
 	//start receiving the file
 	int length = 0;
 	int i = 0;
-	while((length = recv(*SockedCopy, buffer, BUFFER_SIZE, 0)) > 0 && i < filesizeInt/1024 + 1)
+	fileReading = 1;
+	while(i < filesizeInt/1024 + 1)
 	{
-		printf("partsize:%d\n", length);
-		if(fwrite(buffer, sizeof(char), length, fp) < length)
+		length = read(Socket, buffer, BUFFER_SIZE); 
+		if(fwrite(buffer, sizeof(char), length - 2, fp) < length - 2)
 		{
 			printf("File:\t%s Write Failed\n", dest);
 			break;
 		}
-		printf("file receiving part %d\n successfully!", ++i);
+		printf("file receiving part %d successfully!\n", ++i);
 		bzero(buffer, BUFFER_SIZE);
 	}
 	printf("Receive File From Server Successful into %s!\n", dest);
@@ -146,23 +147,9 @@ void* Receive(void* Socked)
 		//read message continuosly
 		int reveiverEnd = 0;
 		reveiverEnd  = read (*SockedCopy, Receiver, 1000);
+		if(Receiver[0] == '!' && Receiver[1] == '!')
+			fileReading = 1;
 		Receiver[reveiverEnd] = '\0';	
-		if (Receiver[0] == '!' && Receiver[1] == '!')
-		{
-			fputs(Receiver, stdout);
-			//check whether the file sender is myself
-			char fileSender[50];
-			strncat(fileSender, Receiver, 2 + strlen(userName));
-			char userNow[50] = "!!";
-			strcat(userNow, userName);
-			//if the sender is not yourself, receive file
-			//otherwise, you don't have to receive this
-			if(strcmp(fileSender, userNow) != 0)
-				senderMyself = 0;
-     			else
-				senderMyself = 1;			
-		}
-			else
 		fputs(Receiver, stdout);
 		Receiver[0] = '\0';
 	}
