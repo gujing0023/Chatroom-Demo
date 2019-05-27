@@ -7,14 +7,14 @@
 #include <unistd.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 1024
-#define FILE_NAME_MAX_SIZE 512
+#define BUFFER_SIZE 1024             //Max size of one single part of a file
+#define FILE_NAME_MAX_SIZE 512       //Max size of a file name(including address)
 
-static pthread_t thread;
-static pthread_t threadClient[100];
-static int ServerSock;
-static int clientNumber;
-static int fileDistributing;
+static pthread_t thread;             //mark main thread, process
+static pthread_t threadClient[100];  //mark clients' thread
+static int ServerSock;               //socket of server
+static int clientNumber;             //use to count thr number of clients
+static int fileDistributing;         //use to mark whrther filr is distributing
 
 //Every client's information
 typedef struct
@@ -27,11 +27,8 @@ typedef struct
 } connection_t;
 static connection_t conn[100];
 
-
-
 //this function distributes the messsage/status of single client to the other
 //Info is the message needed to be distributed
-
 int SendInfo(void* Info, int exception)
 {
 	char *info = Info;
@@ -45,8 +42,6 @@ int SendInfo(void* Info, int exception)
 		}	
 	return 0;	
 }
-
-
 
 //this function sends the file of single client to the others
 //File is the filename needed to be sent
@@ -71,7 +66,8 @@ int SendFile(connection_t* clientStruct)
 	sprintf(filesizeStringsize, "%ld", strlen(filesizeString));
 	SendInfo(filesizeStringsize, clientStruct->sock);
 	SendInfo(filesizeString, clientStruct->sock);
-
+	
+	//send file in parts, reading and writing till the end
 	for(int i=0; i < filesize/1024+1; ++i)
 	{
 		read(clientStruct->sock, &len, sizeof(int));
@@ -81,10 +77,13 @@ int SendFile(connection_t* clientStruct)
 		printf("send part %d successful!\n", i + 1);
 		bzero(buffer, BUFFER_SIZE);
 	}
+	
+	//print success message and return
 	printf("send all parts successful!\n");	
 	fileDistributing = 0;
 	return 0;
 }
+
 //This function deals with single client, aim to receive message from this client
 //and then send them to another using SendInfo
 void* Receive(void* clientStruct)
@@ -177,14 +176,13 @@ int usernameExisted(char userName[], int clientnumber)
 //aim to accept whenever there is a client trying to connect
 void * process(void * ptr)
 {
-	pthread_t clientThread[100];
-	char * buffer;
+	char* buffer;
 	int len;
-	//the number of the client connecting now
-	clientNumber = 0;      
+	clientNumber = 0;   //initialize number of clients      
 	long addr = 0;
+
 	while(1){
-		//waiting to be connected
+		//waiting to be connected, can allow less than 100 clients to conect 
 		if(clientNumber < 100)
 		{
 			conn[clientNumber].sock = accept(ServerSock, &conn[clientNumber].address, &conn[clientNumber].addr_len);
@@ -192,23 +190,23 @@ void * process(void * ptr)
 		else
 			break;
 
-
-		//the length of the message
+		//read the message length
 		read(conn[clientNumber].sock, &len, sizeof(int));
+		//only if the message is long enough to receive
 		if (len > 0)
 		{
-
-			//multiple information of a client
+			//neccessary information of a client
 			addr = (long)((struct sockaddr_in *)&conn[clientNumber].address)->sin_addr.s_addr;
 			buffer = (char *)malloc((len+1)*sizeof(char));
-			buffer[len] = 0;
+			buffer[len] = '\0';
 			read(conn[clientNumber].sock, buffer, len);
+			
 			//save client's nick name
 			strcpy(conn[clientNumber].UserName, buffer);
 		
 			//determine whether the UserName existed
 			if(usernameExisted(conn[clientNumber].UserName, clientNumber))
-			//reject connection
+				//reject connection and send reject information to the clients
 			{
 				send(conn[clientNumber].sock,  "Reject", 6, 0);
 				--clientNumber;
@@ -241,40 +239,39 @@ void * process(void * ptr)
 	pthread_exit(0);
 }
 
+
 int main(int argc, char ** argv){
 	struct sockaddr_in address;
 	int port = 8888;
-	connection_t * connection;
+	connection_t* connection;
 
-	//create socked
+	//create socket
 	ServerSock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-	//bind the socked to a port
+	//bind the socket to a port
 	address.sin_family = AF_INET;
 	address.sin_addr.s_addr = INADDR_ANY;
 	address.sin_port = htons(port);
+	//if doesn't success, print fail message
 	if (bind(ServerSock, (struct sockaddr *)&address, sizeof(struct sockaddr_in)) < 0)
 	{
 		fprintf(stderr, "error: cannot bind socket to port %d\n", port);
 		return -4;
 	}
 
-
 	//listen for connections
+	//the second parameter marks max number of clients
 	listen(ServerSock, 100);
 	printf("the server is ready and listening\n");
 
-
 	//creating a thread dealing with connections
 	pthread_create(&thread, 0, process, (void *)connection);
-
 
 	//keep this program working
 	for(int i = 0; i < 100; ++i)
 		sleep(10000);
 
-
-	//close socked and thread
+	//close socket and thread
 	pthread_detach(thread);
 	close(ServerSock);
 	return 0;

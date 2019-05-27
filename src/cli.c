@@ -11,55 +11,60 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#define BUFFER_SIZE 1024
-#define FILE_NAME_MAX_SIZE 512
-static char userName[50];
-static int senderMyself;
-static int fileReading = 0;
+#define BUFFER_SIZE 1024           //Max size of one part of a file
+#define FILE_NAME_MAX_SIZE 512     //Max size of file name (including address)   
+static char userName[50];          //user name used to identify a client in a chatroom
+static int fileReading = 0;        //a flag used to identify whether this client is receiving file
 
-void* Sendfile(char* Filename, void* Socked)
+//send file in parts according to file's name and server's socket
+void Sendfile(char* Filename, void* Socket)
 {
-	int *SockedCopy = Socked; 
-	char *filename = Filename;
+	int *SocketCopy = Socket; 
 	char buffer[1025];
 	FILE *fp;
-	fp = fopen(filename, "r");
+	fp = fopen(Filename, "r");
+
+	//cannot open file
 	if(NULL == fp)
 	{
-		printf("File:%s Not Found\n", filename);
+		printf("File:%s Not Found\n", Filename);
+		return;
 	}
 	else
 	{
-		buffer[0]='\0';
+		//reading the file and send it by parts using while loop
 		int length =0;
 		while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
 		{
-			write(*SockedCopy, &length, sizeof(int));
-			if(write(*SockedCopy, buffer, length) < 0)
+			write(*SocketCopy, &length, sizeof(int));
+			if(write(*SocketCopy, buffer, length) < 0)
 			{
-				printf("Upload file:%s Failed.\n", filename);
+				printf("Upload file:%s Failed.\n", Filename);
 				break;
 			}
 			bzero(buffer, BUFFER_SIZE);
 		}
 	}
 	fclose(fp);
-	printf("File:%s Upload Successfully!\n", filename);
+	printf("File:%s Upload Successfully!\n", Filename);
 	
 }
 
 void ReceiveFile(char* dest, int Socket);
 //send the message to the server any time terminal get input
-void* Send(void* Socked)
+void* Send(void* Socket)
 {
 	char sender[80];
 	char Filename[FILE_NAME_MAX_SIZE];
 	//save the socked into a int pointer
-	int *SockedCopy = Socked;
+	int *SocketCopy = Socket;
 	while(1)
 	{
+		//if receiving file, don't get input from terminal
 		if(fileReading) continue;
+		//else normally working
 		fgets(sender, sizeof(sender), stdin);
+		
 		//if this is the signal to save file, pass the destination to save
 		if(sender[1] == 'f' && sender[2] == 's')
 		{
@@ -68,36 +73,46 @@ void* Send(void* Socked)
 			for(int i = 4; i <  strlen(sender) - 1; ++i)
 				destination[i - 4] = sender[i];
 			destination[strlen(sender) - 5] = '\0';
-			ReceiveFile(destination, *SockedCopy);
+			//set flag fileReading and start to receive file
+			ReceiveFile(destination, *SocketCopy);
 			continue;
 		}		
-		//else this is the message needed to be sent to the sever
+
+		//otherwise, this is a chatting message, distribute it immediately
 		int messageSize = strlen(sender) + 1;
-		write(*SockedCopy, &messageSize, sizeof(int));
- 		write(*SockedCopy, sender, messageSize);      
-		//check whether this is a quit message
+		write(*SocketCopy, &messageSize, sizeof(int));
+ 		write(*SocketCopy, sender, messageSize);      
+	
+		//check whether this is a quit message, if is, quit immediately
 		if(strcmp(sender, ":q!\n") == 0)
 			exit(1);
+		
+		//check whether this is a signal to send file
 		else if(sender[1] == 'f' && sender[2] == 'w')
 		{	
 			printf("please enter the file name again( including address):\n");
 			scanf("%s", Filename);
+			
+			//open the file and send the size of the file to the server
 			FILE *fp=fopen(Filename, "r");
 			fseek(fp, 0L, SEEK_END);
 			int Filesize=ftell(fp); 
 			int intSize = sizeof(int);
-			write(*SockedCopy, &intSize, sizeof(int));
-			write(*SockedCopy, &Filesize, sizeof(int));
-	                Sendfile( Filename, SockedCopy );
+			write(*SocketCopy, &intSize, sizeof(int));
+			write(*SocketCopy, &Filesize, sizeof(int));
+
+			//open this function to send this file, and restore flag after it
+	                Sendfile( Filename, SocketCopy );
 			fileReading = 0;
 		}		
 	}
 }
 
 
-//receive file from server
+//receive file from server, save it in destination
 void ReceiveFile(char* dest, int Socket)
 {
+	//be prepared to receive file
 	char buffer[BUFFER_SIZE];
 	printf("the position you want to save file in is %s\n", dest);
 	FILE *fp = fopen(dest, "w");
@@ -113,23 +128,27 @@ void ReceiveFile(char* dest, int Socket)
 	char filesizeStringSize[2];
 	int L1 = read(Socket, filesizeStringSize, 2);
 	int L2 = read(Socket, filesize, atoi(filesizeStringSize) + 1);
-
 	int filesizeInt = atoi(filesize);
-	//start receiving the file
+
+	//prepare to receive the file
 	int length = 0;
 	int i = 0;
 	fileReading = 1;
+
+	//receiving the file in parts according to file size
 	while(i < filesizeInt/1024 + 1)
-	{
+	{	
 		length = read(Socket, buffer, BUFFER_SIZE); 
 		if(fwrite(buffer, sizeof(char), length - 2, fp) < length - 2)
 		{
 			printf("File:\t%s Write Failed\n", dest);
-			break;
+			return;
 		}
 		printf("file receiving part %d successfully!\n", ++i);
 		bzero(buffer, BUFFER_SIZE);
 	}
+
+	//print success message and free neccessary things
 	printf("Receive File From Server Successful into %s!\n", dest);
 	fileReading = 0;
 	fclose(fp);
@@ -156,7 +175,7 @@ void* Receive(void* Socked)
 }
 int main ()
 {
-	int sockfd, n;
+	int sockfd, n, MessageSize;
 	pthread_t threadSend;
 	pthread_t threadReceive;
 	struct sockaddr_in serv, cli;
@@ -165,6 +184,7 @@ int main ()
 	char serAddress[80];
 	
 	//input server address
+	//use defualt when typing in changeline
 	printf("Input server address(type <Enter> to use default): ");
 	fgets(serAddress, sizeof(serAddress), stdin);
 	if(serAddress[0] == '\n')
@@ -174,13 +194,12 @@ int main ()
 	serAddress[strlen(serAddress) - 1] = '\0';
 
 	//input UserName
-	userName[0] = '\0';
 	Start: printf("Input Username: " );
 	fgets(userName, sizeof(userName), stdin);
-	userName[strlen(userName) - 1] = '\0';
- 	int MessageSize = strlen(userName);
+	userName[strlen(userName) - 1] = '\0'; //cut the '\n' ending
+ 	MessageSize = strlen(userName);
 
-	//create socked
+	//create socket
  	sockfd = socket (PF_INET, SOCK_STREAM, 0);
 
 	//create server information
@@ -192,7 +211,7 @@ int main ()
 	//connect to the server
 	if(connect (sockfd, (struct sockaddr *) &serv, sizeof (struct sockaddr)) == -1)
 	{
-		printf("connect failed\n");
+		printf("connect %s failed\n", serAddress);
 		exit(1);
 	}
 
@@ -200,31 +219,33 @@ int main ()
 	write(sockfd, &MessageSize, sizeof(int));
  	write (sockfd, userName, sizeof(userName));
 
-	//get successfully connecting message
-	n = read (sockfd, rec, 1000);//n marks real length
+	//get successfully connect message
+	n = read (sockfd, rec, 1000);
  	rec[n] = '\0';	
 
-	//check whether been rejected
+	//check whether been rejected according to rec
 	if(rec[0] == 'R')
 	{
+		//Reject GOTO input another userName
 		rec[0] = '\0';
 		printf("Username existed, choose another one.\n");
 	 	goto Start; 
 	}
 	else
-	{	
+	{
+		//doesn't been rejected, open threads that are needed
 		fputs(rec, stdout);
-
 		//open send thread 	
 		pthread_create(&threadSend, 0, Send, &sockfd);
-
 		//open receiving message thread
 		pthread_create(&threadReceive, 0, Receive, &sockfd);
 	}
 
-	//close socked and close two threads
+	//Make sure this program last a long time
 	for(int i = 0; i < 100; ++i)
 		sleep(100000);
+	
+	//close and free everything then quit
 	pthread_exit(&threadSend);
 	pthread_exit(&threadReceive);
 	close(sockfd);
