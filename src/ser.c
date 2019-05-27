@@ -92,15 +92,17 @@ void* Receive(void* clientStruct)
 	connection_t* clientInfo = (connection_t *)clientStruct;
 	while(1)
 	{
+		//if the server is sending file, don't receive useless information
 		if(fileDistributing) continue;
 		//read the message from the client
 		char *Buffer;
 		int messageLen = 0;
-		read(clientInfo->sock, &messageLen, sizeof(int));
+		read(clientInfo->sock, &messageLen, sizeof(int));  
+		//if message is long enough, deal with it
 		if(messageLen > 0)
 		{
 			Buffer = (char *)malloc((messageLen+1)*sizeof(char));
-			read(clientInfo->sock, Buffer, messageLen);   // the program stucks here and don't know why
+			read(clientInfo->sock, Buffer, messageLen); 
 						
 			if(Buffer[0] != ':') continue;
 			Buffer[messageLen] = '\0';
