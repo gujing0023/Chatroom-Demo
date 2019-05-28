@@ -95,7 +95,7 @@ write(*SockedCopy, sender, messageSize);
 
 ```c
 if(strcmp(sender, ":q!\n") == 0)
-exit(1);
+			exit(1);
 ```
 
 发送文件语句格式为```:fw+空格+文件名```，屏幕提示之后输入待发送文件的绝对地址或与聊天室程序在同一个文件夹下的文件名并保存在```Filename```中。为了告诉服务器需要多少空间获取全部文件内容避免产生错误或遗漏内容，先打开文件读取文件大小，将其发送给服务器之后，再调用```Sendfile```函数发送文件内容。
@@ -143,18 +143,18 @@ void* Sendfile(char* Filename, void* Socked)
 {
 	...
 	fp = fopen(filename, "r");
-//找不到文件
+    //找不到文件
 	if(NULL == fp)
 	{
 		printf("File:%s Not Found\n", filename);
 	}
 	else
 	{
-//循环不断读取文件内容并发送给服务器
+		//循环不断读取文件内容并发送给服务器
 		while((length = fread(buffer, sizeof(char), BUFFER_SIZE, fp)) > 0)
 		{
 			write(*SockedCopy, &length, sizeof(int));
-//中途有任何错误就报错
+            //中途有任何错误就报错
 			if(write(*SockedCopy, buffer, length) < 0)
 			{
 				printf("Upload file:%s Failed.\n", filename);
@@ -163,7 +163,7 @@ void* Sendfile(char* Filename, void* Socked)
 			bzero(buffer, BUFFER_SIZE);
 		}
 	}
-//关闭文件并表示传送成功
+    //关闭文件并表示传送成功
 	fclose(fp);
 	printf("File:%s Upload Successfully!\n", filename);
 	
@@ -172,33 +172,28 @@ void* Sendfile(char* Filename, void* Socked)
 
 #### ReceiveFile函数—用于从服务器接收文件
 
+从终端得知保存文件的地址，从服务器得到文件大小之后，就能够使用循环接收文件内容写入目标文件之中。之前和之后需要改变```fileReading```的值，用于屏蔽聊天信息的干扰。特别需要注意的是，```read```函数得到的文件大小是字符类型，需要将它强制转化为整数型。
+
 ```c
 void ReceiveFile(char* dest, int Socket)
 {
-	//be prepared to receive file
+	//准备接收文件
 	char buffer[BUFFER_SIZE];
-	printf("the position you want to save file in is %s\n", dest);
 	FILE *fp = fopen(dest, "w");
-	if(NULL == fp)
-	{
-		printf("File:\t%s Can Not Open To Write\n", dest);
-		exit(1);
-	}
+    ...
 	bzero(buffer, BUFFER_SIZE);
 
-	//read the size of the file, turn string into int
+	//读取文件大小，注意要把读取的字符转换为整数类型
 	char filesize[20];
 	char filesizeStringSize[2];
 	int L1 = read(Socket, filesizeStringSize, 2);
 	int L2 = read(Socket, filesize, atoi(filesizeStringSize) + 1);
 	int filesizeInt = atoi(filesize);
 
-	//prepare to receive the file
-	int length = 0;
-	int i = 0;
-	fileReading = 1;
+    ...
+    fileReading = 1;
 
-	//receiving the file in parts according to file size
+	//根据文件大小接收文件
 	while(i < filesizeInt/1024 + 1)
 	{	
 		length = read(Socket, buffer, BUFFER_SIZE); 
@@ -211,7 +206,7 @@ void ReceiveFile(char* dest, int Socket)
 		bzero(buffer, BUFFER_SIZE);
 	}
 
-	//print success message and free neccessary things
+	//接收文件成功，将fileReading设为0，关闭文件
 	printf("Receive File From Server Successful into %s!\n", dest);
 	fileReading = 0;
 	fclose(fp);
@@ -237,27 +232,82 @@ static connection_t conn[100]; //100个用户一人一个
 #### process函数—用于监听用户端的连接请求
 
 ```c
-int usernameExisted(char userName[], int clientnumber)
+void * process(void * ptr)
 {
-	for(int i = 0; i < 100 && i != clientnumber; ++i)
-	{
-		if(conn[i].addr_len != 0 && conn[i].addr_len != -1)
-			if(strcmp(conn[i].UserName, userName) == 0)
-				return 1;
+	char* buffer;
+	int len;
+	clientNumber = 0;   //初始化用户个数    
+	long addr = 0;
 
-	}	
-	return 0;
+	while(1){
+		//等待连接
+		if(clientNumber < 100)
+		{
+			conn[clientNumber].sock = accept(ServerSock, &conn[clientNumber].address, &conn[clientNumber].addr_len);
+		}
+		else
+			break;
+
+		//读取信息长度
+		read(conn[clientNumber].sock, &len, sizeof(int));
+		//开始读取
+		if (len > 0)
+		{
+			//neccessary information of a client
+			addr = (long)((struct sockaddr_in *)&conn[clientNumber].address)->sin_addr.s_addr;
+			buffer = (char *)malloc((len+1)*sizeof(char));
+			buffer[len] = '\0';
+			read(conn[clientNumber].sock, buffer, len);
+			
+			//save client's nick name
+			strcpy(conn[clientNumber].UserName, buffer);
+		
+			//determine whether the UserName existed
+			if(usernameExisted(conn[clientNumber].UserName, clientNumber))
+				//reject connection and send reject information to the clients
+			{
+				send(conn[clientNumber].sock,  "Reject", 6, 0);
+				--clientNumber;
+			}
+			else
+			{
+				//send success message to the client
+				send (conn[clientNumber].sock, "You have entered the chatroom, Start CHATTING Now!\n", 51, 0);
+				
+				//send inform message to all the users
+				char mesStart[50] = "User ";
+				char mesMiddle[30] = " has entered the Chatroom!\n";
+				char mesNumber[50];
+				sprintf(mesNumber, "There are %d people in the Chatroom now!!\n", clientNumber + 1);
+				strcat(mesStart, conn[clientNumber].UserName);
+				strcat(mesStart, mesMiddle);
+				strcat(mesStart, mesNumber);
+				printf("%s", mesStart);
+				SendInfo(mesStart, -1);
+				
+				//create a thread dealing the messages from a single client
+				pthread_create(&threadClient[clientNumber], 0, Receive, &conn[clientNumber]);
+				conn[clientNumber].threadNumber = threadClient[clientNumber];
+			}
+			free(buffer);
+		}
+		clientNumber += 1;
+		
+	}
+	pthread_exit(0);
 }
 ```
 
 #### usernameExisted函数—用于判断用户昵称是否重复
 
+新登录用户输入用户名之后，使用循环与除了自身之外的所有其他用户的用户名进行比较。当昵称重复时返回1。
+
 ```c
 int usernameExisted(char userName[], int clientnumber)
 {
-	for(int i = 0; i < 100 && i != clientnumber; ++i)
+	for(int i = 0; i < 100 && i != clientnumber; ++i) //100个用户中跳过自身
 	{
-		if(conn[i].addr_len != 0 && conn[i].addr_len != -1)
+		if(conn[i].addr_len != 0 && conn[i].addr_len != -1)//当用户存在时
 			if(strcmp(conn[i].UserName, userName) == 0)
 				return 1;
 
@@ -303,7 +353,7 @@ if (fileDistributing) continue;
 ```c
 if( Buffer[1] == 'q' && Buffer[2] == '!' )
 {
-//用户想退出聊天室
+    //用户想退出聊天室
     ...
     SendInfo(quitMessage, -1);//组装消息后发送给其他客户端
     ...
@@ -311,20 +361,18 @@ if( Buffer[1] == 'q' && Buffer[2] == '!' )
 }
 else if ( Buffer[1] == 'f' && Buffer[2]  =='w')
 {
-//用户想发送文件到聊天室中
+    //用户想发送文件到聊天室中
     ...
     SendInfo(sign, -1);//组装消息后发送给其他客户端提示需要接收了！
 	SendFile(clientInfo);//使用SendFile函数将文件发送给其他客户端
 }
 else
 {
-//用户仅仅是想发送一条聊天的话而已
+ 	//用户仅仅是想发送一条聊天的话而已
     ...
     SendInfo(messageDistribute, -1);//组装信息后发送给其他人
 }
 ```
-
-以上即是```Receive```函数的实现思路，关于部分函数细节，请参考附录或附件源代码。
 
 #### SendFile函数—用于将接收到的文件信息发送给其他用户
 
@@ -350,7 +398,8 @@ int SendFile(connection_t* clientStruct)
 	sprintf(filesizeStringsize, "%ld", strlen(filesizeString));
 	SendInfo(filesizeStringsize, clientStruct->sock);
 	SendInfo(filesizeString, clientStruct->sock);
-
+	
+	//send file in parts, reading and writing till the end
 	for(int i=0; i < filesize/1024+1; ++i)
 	{
 		read(clientStruct->sock, &len, sizeof(int));
@@ -360,10 +409,13 @@ int SendFile(connection_t* clientStruct)
 		printf("send part %d successful!\n", i + 1);
 		bzero(buffer, BUFFER_SIZE);
 	}
+	
+	//print success message and return
 	printf("send all parts successful!\n");	
 	fileDistributing = 0;
 	return 0;
 }
 ```
 
+以上即是所有函数的实现思路，关于部分函数细节，请参考附录或附件源代码。
 
